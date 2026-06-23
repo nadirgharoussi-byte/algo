@@ -1,22 +1,17 @@
 import pygame
 import time
-import random
-from inst import * # Assumes inst.py defines constants like WIDTH, HEIGHT, FPS, colors, etc.
+from inst import *
 
-# --- INITIALIZATION ---
 pygame.init()
 WIN = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
 pygame.display.set_caption("dodge (beta)")
 
-# Fonts
 FONT = pygame.font.SysFont("comicsans", 21)
 LARGE_FONT = pygame.font.SysFont("comicsans", 40)
 STAGE_FONT = pygame.font.SysFont("comicsans", 60)
 BG = pygame.image.load("background 1600x900.png")
 
-# --- LEVEL CONFIGURATIONS ---
-# Storing level data structurally makes expanding the game significantly easier
-LEVELS_DATA = {
+game_play = {
     1: {
         "obstacles": [
             (OBSTACLE_X, OBSTACLE_Y, OBSTACLE_WIDTH, OBSTACLE_HEIGHT),
@@ -49,15 +44,13 @@ LEVELS_DATA = {
     }
 }
 
-# --- UI HELPERS ---
 def draw_text_center(text, font, color, y_offset=0):
-    """Utility to render text perfectly centered horizontally on screen."""
+
     rendered_text = font.render(text, 1, color)
     x = WIDTH // 2 - rendered_text.get_width() // 2
     y = HEIGHT // 2 - rendered_text.get_height() // 2 + y_offset
     WIN.blit(rendered_text, (x, y))
 
-# --- GAME SCREENS ---
 def main_menu():
     clock = pygame.time.Clock()
     while True:
@@ -99,7 +92,6 @@ def pause_menu():
         clock.tick(FPS)
 
 def end_game_screen(message, text_color):
-    """Displays end-game status (Win/Loss). Returns True to restart, False to exit."""
     clock = pygame.time.Clock()
     while True:
         WIN.fill(BLACK)
@@ -115,10 +107,8 @@ def end_game_screen(message, text_color):
                 if event.key == pygame.K_ESCAPE: return False
         clock.tick(FPS)
 
-# --- ENGINE LOGIC HELPERS ---
 def load_level_objects(level):
-    """Generates Pygame Rect instances dynamically for the requested level map layout."""
-    data = LEVELS_DATA[level]
+    data = game_play[level]
     
     obstacles = [pygame.Rect(*obs) for obs in data["obstacles"]]
     coins = [pygame.Rect(pos[0], pos[1], COIN_WIDTH_1, COIN_HEIGHT_1) for pos in data["coins"]]
@@ -127,53 +117,44 @@ def load_level_objects(level):
     return obstacles, coins, ending
 
 def reset_player_position(player, invincibility_duration):
-    """Resets player position back to initial spawn coordinates and applies grace timers."""
     player.x, player.y = PLAYER_X, PLAYER_Y
     return invincibility_duration
 
-# --- CORE DRAW LOOP ---
 def draw_game_scene(player, elapsed_time, score, level, coins_collected, show_warning, obstacles, ending, coins, player_attempts, invincible_timer):
     WIN.blit(BG, (0, 0))
 
-    # UI Left Sidebar HUD Info
     WIN.blit(FONT.render(f"Time: {round(elapsed_time)}s", 1, WHITE), (10, 10))
     WIN.blit(FONT.render(f"Attempts: {player_attempts}", 1, WHITE), (10, 40))
     WIN.blit(FONT.render(f"Score: {score}", 1, WHITE), (10, 70))
     WIN.blit(FONT.render(f"Coins: {coins_collected}/3", 1, YELLOW), (10, 100))
     
-    # UI Centered Headings
     draw_text_center(f"Stage: {level}", FONT, WHITE, -HEIGHT // 2 + 25)
     if show_warning:
         draw_text_center("COLLECT ALL COINS TO PROGRESS!", FONT, RED, -HEIGHT // 2 + 55)
 
-    # UI Right Invincibility Alert
     if invincible_timer > 0:
         inv_text = FONT.render(f"{player_attempts} lives remaining", 1, LIGHT_RED)
         WIN.blit(inv_text, (WIDTH - 200, 10))
 
-    # Render Entities
     pygame.draw.rect(WIN, PLAYER_COLOR, player)
     pygame.draw.rect(WIN, ENDING_COLOR, ending)
 
-    # Clean obstacle coloring mapping lookup array
     obs_colors = {5: OBSTACLE_COLOR_6, 6: OBSTACLE_COLOR_7, 7: OBSTACLE_COLOR_8}
     for idx, obstacle in enumerate(obstacles):
         pygame.draw.rect(WIN, obs_colors.get(idx, OBSTACLE_COLOR), obstacle)
 
-    # Clean coin coloring lookup array
     coin_colors = {0: COIN_COLOR_1, 1: COIN_COLOR_2}
     for idx, coin in enumerate(coins):
-        if coin.x != -100:  # If it hasn't been picked up
+        if coin.x != -100:
             pygame.draw.rect(WIN, coin_colors.get(idx, COIN_COLOR_3), coin)
 
-# --- MAIN LOOP ---
+
 def main():
     main_menu()
     
     current_level = 1
     stage_splash(current_level)
 
-    # State variables
     player_attempts = PLAYER_ATTEMPTS_LIMIT
     score = PLAYER_SCORE
     invincible_timer = 0
@@ -191,13 +172,11 @@ def main():
     while run:
         elapsed_time += 1 / FPS
 
-        # Update Timers
         if invincible_timer > 0: invincible_timer -= 1
         if show_coin_warning:
             warning_timer -= 1
             if warning_timer <= 0: show_coin_warning = False
-        
-        # Event Handling Loop
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
@@ -207,34 +186,30 @@ def main():
         
         if not run: break
 
-        # Player Controls & Screen Boundaries
         keys = pygame.key.get_pressed()
         if keys[pygame.K_a] or keys[pygame.K_LEFT]:  player.x = max(0, player.x - PLAYER_SPEED)
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]: player.x = min(WIDTH - PLAYER_WIDTH, player.x + PLAYER_SPEED)
         if keys[pygame.K_w] or keys[pygame.K_UP]:    player.y = max(0, player.y - PLAYER_SPEED)
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:  player.y = min(HEIGHT - PLAYER_HEIGHT, player.y + PLAYER_SPEED)
-        
-        # 1. Obstacle Collision Resolution
+
         if invincible_timer == 0:
             if any(player.colliderect(obs) for obs in obstacles):
                 player_attempts -= 1
                 if player_attempts < 0:
                     if end_game_screen("Game Over! You ran out of attempts!", RED):
-                        main()  # Restart entire execution hierarchy
+                        main()
                     run = False
                     break
                 else:
                     invincible_timer = reset_player_position(player, 60)
                     continue
 
-        # 2. Coin Mechanics Collision Resolution
         for coin in coins:
             if coin.x != -100 and player.colliderect(coin):
                 score += 1
                 coins_collected += 1
-                coin.x = -100  # Instantly cull coin rendering tracking index offscreen
+                coin.x = -100
 
-        # 3. Winning / Stage Level Progression System
         if player.colliderect(ending) or elapsed_time >= 30:
             if coins_collected >= 3:
                 if current_level < 3:
@@ -252,8 +227,7 @@ def main():
             else:
                 show_coin_warning = True
                 warning_timer = 90  
-        
-        # Render Frame
+
         draw_game_scene(player, elapsed_time, score, current_level, coins_collected, show_coin_warning, 
                         obstacles, ending, coins, player_attempts, invincible_timer)
         pygame.display.update()
